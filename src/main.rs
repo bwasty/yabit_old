@@ -1,19 +1,22 @@
 #![feature(field_init_shorthand)]
-// #![feature(proc_macro)]
-
 
 #[macro_use]
 extern crate serde_derive; 
-// extern crate serde_json;
-
+extern crate serde_json;
 extern crate chrono;
- 
 extern crate clap; 
+
+use std::fs::File;
+use std::error::Error;
 
 use clap::{App, Arg, SubCommand};
 use chrono::NaiveDate;
 
-// type Date = chrono::Date<chrono::UTC>;
+macro_rules! p {
+    ($expression:expr) => (
+        println!("{:?}", $expression);
+    )
+}
 
 #[allow(dead_code)]
 enum HabitState {
@@ -23,8 +26,13 @@ enum HabitState {
     Late
 }
 
+// enum HabitStatus {
+//     Done,
+//     Skipped,
+//     Hidden
+// }
+
 #[derive(Serialize, Deserialize, Debug)] 
-// #[derive(Debug)] 
 struct Days {
     good: u16,
     ok: u16,
@@ -37,11 +45,10 @@ impl Days {
 } 
 
 #[derive(Serialize, Deserialize, Debug)] 
-// #[derive(Debug)] 
 struct Habit {
     name: String,
     done: Vec<NaiveDate>,
-    // test: NaiveDate,
+    skipped: Vec<NaiveDate>,
     days: Days,
 
     // skipped_today: bool,
@@ -53,15 +60,56 @@ impl Habit {
         Habit { 
             name: name.to_string(), 
             days: days, 
-            done: vec![]
+            done: vec![],
+            skipped: vec![]
         }
+    }
+
+    fn state(&self) -> HabitState {
+        unimplemented!()
     }
 }
 
-macro_rules! p {
-    ($expression:expr) => (
-        println!("{:?}", $expression);
-    )
+struct Habits {
+    habits: Vec<Habit>
+}
+impl Habits {
+    fn load(&mut self) {
+        match File::open("habits.json") {
+            Ok(file) => {
+                // TODO: deserialize
+                p!("load...");
+            },
+            Err(err) => println!("Couldn't open habits.json ({}), creating new one.", err.description())
+        }
+    }
+
+    fn save(&self) {
+
+    }
+
+    fn add(name: &str, days: Days) {
+        unimplemented!()
+    }
+
+    fn remove(name: &str) {
+        unimplemented!()
+    }
+
+    fn done(name: &str) {
+        unimplemented!()
+    }
+
+    fn skip(name: &str) {
+        unimplemented!()
+    }
+}
+
+impl Drop for Habits {
+    fn drop(&mut self) {
+        p!("Drop");
+        self.save();
+    }
 }
 
 fn main() {
@@ -76,6 +124,7 @@ fn main() {
         let name = new_args.value_of("NAME").unwrap(); // required arg
         let habit = Habit::new(name, Days::new(1, 2, 3));
         println!("Adding {:?}", habit); // TODO!: actually do it
+        println!("{}", serde_json::to_string_pretty(&habit).unwrap())
     }
     else if let Some(rm_args) = args.subcommand_matches("rm") {
         let name = rm_args.value_of("NAME").unwrap(); // required arg
@@ -85,7 +134,12 @@ fn main() {
         p!("Existing habits: "); // TODO!: print saved ones...
     }
 
-    // for argument in std::env::args() {
-    //     println!("{}", argument);
+    let (command, sub_args) = args.subcommand();
+    let name = sub_args.unwrap().value_of("NAME").unwrap(); // required arg
+    // match command {
+    //     "new" => 
     // }
+
+    let habits = Habits { habits: vec![] };
 }
+
