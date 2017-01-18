@@ -8,6 +8,7 @@ extern crate clap;
 
 use std::fs::File;
 use std::error::Error;
+use std::time::SystemTime;
 
 use clap::{App, Arg, SubCommand};
 use chrono::{NaiveDate, Datelike};
@@ -88,10 +89,6 @@ impl Habits {
     fn load(&mut self) {
         match File::open("habits.json") {
             Ok(file) => {
-                // TODO: deserialize
-                p!("load...");
-                // let mut s = String::new();
-                // file.read_to_string(&mut s).unwrap();
                 self.habits = serde_json::from_reader(file).unwrap();
             },
             Err(err) => println!("Couldn't open habits.json ({}), creating new one.", err.description())
@@ -143,6 +140,8 @@ impl Habits {
 }
 
 fn main() {
+    let start_time = SystemTime::now();
+
     let mut habits = Habits::new();
     habits.load();
 
@@ -179,5 +178,8 @@ fn main() {
     }
 
     habits.save(); 
+
+    let elapsed = start_time.elapsed().unwrap();
+    println!("{}s {}ms", elapsed.as_secs(), elapsed.subsec_nanos() / 1_000_000);
 }
 
