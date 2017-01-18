@@ -10,7 +10,7 @@ use std::fs::File;
 use std::error::Error;
 
 use clap::{App, Arg, SubCommand};
-use chrono::NaiveDate;
+use chrono::{NaiveDate, Datelike};
 
 macro_rules! p {
     ($expression:expr) => (
@@ -65,81 +65,119 @@ impl Habit {
         }
     }
 
+    #[allow(dead_code)]
     fn state(&self) -> HabitState {
         unimplemented!()
     }
 }
 
+fn today() -> NaiveDate {
+    let today = chrono::Local::today();
+    NaiveDate::from_num_days_from_ce(today.num_days_from_ce())
+}
+
+#[derive(Debug)]
 struct Habits {
-    habits: Vec<Habit>
+    pub habits: Vec<Habit>
 }
 impl Habits {
+    fn new() -> Habits{
+        Habits { habits: vec![] }
+    }
+
     fn load(&mut self) {
         match File::open("habits.json") {
             Ok(file) => {
                 // TODO: deserialize
                 p!("load...");
+                // let mut s = String::new();
+                // file.read_to_string(&mut s).unwrap();
+                self.habits = serde_json::from_reader(file).unwrap();
             },
             Err(err) => println!("Couldn't open habits.json ({}), creating new one.", err.description())
         }
     }
 
     fn save(&self) {
-
+        let mut f = File::create("habits.json").unwrap();
+        serde_json::to_writer_pretty(&mut f, &self.habits).unwrap()
     }
 
-    fn add(name: &str, days: Days) {
-        unimplemented!()
+    fn add(&mut self, name: &str, days: Days) {
+        self.habits.push(Habit::new(name, days));
     }
 
-    fn remove(name: &str) {
-        unimplemented!()
+    fn remove(&mut self, name: &str) {
+        self.habits.retain(|ref habit| habit.name != name);
     }
 
-    fn done(name: &str) {
-        unimplemented!()
+    fn done(&mut self, name: &str) {
+        let today = today();
+        let i = self.index_of(name);
+        let habit = self.habits.get_mut(i).unwrap();
+        habit.done.push(today);
+        habit.done.dedup();
+
+        // done and skipped is mutually exclusive...
+        if let Ok(i) = habit.skipped.binary_search(&today) {
+            habit.skipped.remove(i);
+        }
     }
 
-    fn skip(name: &str) {
-        unimplemented!()
-    }
-}
+    fn skip(&mut self, name: &str) {
+        let today = today();
+        let i = self.index_of(name);
+        let habit = self.habits.get_mut(i).unwrap();
+        habit.skipped.push(today);
+        habit.skipped.dedup();
 
-impl Drop for Habits {
-    fn drop(&mut self) {
-        p!("Drop");
-        self.save();
+        // done and skipped is mutually exclusive...
+        if let Ok(i) = habit.done.binary_search(&today) {
+            habit.done.remove(i);
+        }
+    }
+
+    fn index_of(&self, name: &str) -> usize {
+        self.habits.iter().position(|ref habit| habit.name == name).unwrap()
     }
 }
 
 fn main() {
+    let mut habits = Habits::new();
+    habits.load();
+
     let required_name_arg = Arg::with_name("NAME").required(true);
     let args = App::new("yabit")
-        .subcommand(SubCommand::with_name("new").arg(required_name_arg.clone()))
+        .subcommand(SubCommand::with_name("add").arg(required_name_arg.clone()))
         .subcommand(SubCommand::with_name("rm").arg(required_name_arg.clone()))
         .subcommand(SubCommand::with_name("done").arg(required_name_arg.clone()))
         .subcommand(SubCommand::with_name("skip").arg(required_name_arg.clone()))
         .get_matches();
-    if let Some(new_args) = args.subcommand_matches("new") {
-        let name = new_args.value_of("NAME").unwrap(); // required arg
-        let habit = Habit::new(name, Days::new(1, 2, 3));
-        println!("Adding {:?}", habit); // TODO!: actually do it
-        println!("{}", serde_json::to_string_pretty(&habit).unwrap())
-    }
-    else if let Some(rm_args) = args.subcommand_matches("rm") {
-        let name = rm_args.value_of("NAME").unwrap(); // required arg
-        println!("Removing habit {}", name); // TODO!: actually do it
-    }
-    else {
-        p!("Existing habits: "); // TODO!: print saved ones...
-    }
 
     let (command, sub_args) = args.subcommand();
+    if command == "" {
+        // no subcommand, just print habits
+        p!(habits);
+        return
+    }
     let name = sub_args.unwrap().value_of("NAME").unwrap(); // required arg
-    // match command {
-    //     "new" => 
-    // }
+    match command {
+        "add" => {
+            // TODO: days...
+            habits.add(name, Days::new(1, 2, 3));
+        }
+        "rm" => {
+            habits.remove(name);
+        },
+        "done" => {
+            habits.done(name);
+        },
+        "skip" => {
+            habits.skip(name);
+        }
+        _ => ()
+    }
 
-    let habits = Habits { habits: vec![] };
+    habits.save(); 
 }
 
