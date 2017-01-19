@@ -11,7 +11,7 @@ use std::error::Error;
 use std::time::SystemTime;
 
 use clap::{App, Arg, SubCommand};
-use chrono::{NaiveDate, Datelike};
+use chrono::{NaiveDate, Datelike, Duration};
 
 macro_rules! p {
     ($expression:expr) => (
@@ -19,12 +19,12 @@ macro_rules! p {
     )
 }
 
-#[allow(dead_code)]
 enum HabitState {
-    Good,
-    Ok,
-    Sufficient,
-    Late
+    VeryGood = 1,
+    Good = 2,
+    Ok = 3,
+    Sufficient = 4,
+    Late = 5
 }
 
 // enum HabitStatus {
@@ -67,14 +67,32 @@ impl Habit {
     }
 
     #[allow(dead_code)]
-    fn state(&self) -> HabitState {
-        unimplemented!()
+    fn state(&self, date: &NaiveDate) -> HabitState {
+        assert!(date >= &today()); // TODO: support dates in the past
+        let diff = *date - *self.done.last().unwrap();
+        // TODO!: continue, check Days...
+        match diff.num_days() {
+            0 => HabitState::VeryGood,
+            _ => HabitState::Late
+        }
     }
 }
 
 fn today() -> NaiveDate {
     let today = chrono::Local::today();
     NaiveDate::from_num_days_from_ce(today.num_days_from_ce())
+}
+
+#[allow(dead_code)]
+fn tomorrow() -> NaiveDate {
+    let today = chrono::Local::today();
+    NaiveDate::from_num_days_from_ce(today.num_days_from_ce() + 1)
+}
+
+#[allow(dead_code)]
+fn days_ago(days: i32) -> NaiveDate {
+    let today = chrono::Local::today();
+    NaiveDate::from_num_days_from_ce(today.num_days_from_ce() - days)
 }
 
 #[derive(Debug)]
@@ -179,7 +197,10 @@ fn main() {
 
     habits.save(); 
 
-    let elapsed = start_time.elapsed().unwrap();
-    println!("{}s {}ms", elapsed.as_secs(), elapsed.subsec_nanos() / 1_000_000);
+    print_elapsed(&start_time);
 }
 
+fn print_elapsed(start_time: &SystemTime) {
+    let elapsed = start_time.elapsed().unwrap();
+    println!("{}s {:.*}ms", elapsed.as_secs(), 1, elapsed.subsec_nanos() as f64 / 1_000_000.0);
+}
