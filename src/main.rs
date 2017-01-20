@@ -19,6 +19,7 @@ macro_rules! p {
     )
 }
 
+#[derive(Debug, PartialEq)]
 enum HabitState {
     VeryGood = 1,
     Good = 2,
@@ -35,12 +36,13 @@ enum HabitState {
 
 #[derive(Serialize, Deserialize, Debug)] 
 struct Days {
-    good: u16,
-    ok: u16,
-    sufficient: u16
+    good: i32,
+    ok: i32,
+    sufficient: i32
 }
 impl Days {
-    fn new(good: u16, ok: u16, sufficient: u16) -> Days {
+    fn new(good: i32, ok: i32, sufficient: i32) -> Days {
+        assert!(good < ok && ok < sufficient);
         Days { good, ok, sufficient }
     }
 } 
@@ -67,32 +69,28 @@ impl Habit {
     }
 
     #[allow(dead_code)]
+    /// state when habit not done on date
     fn state(&self, date: &NaiveDate) -> HabitState {
         assert!(date >= &today()); // TODO: support dates in the past
         let diff = *date - *self.done.last().unwrap();
-        // TODO!: continue, check Days...
-        match diff.num_days() {
-            0 => HabitState::VeryGood,
-            _ => HabitState::Late
+        let diff = diff.num_days() as i32;
+        let days = &self.days;
+        match (days.good - diff, days.ok - diff, days.sufficient - diff) {
+            (x, _, _) if x >  1 => HabitState::VeryGood,
+            (x, _, _) if x == 1 => HabitState::Good,
+            (x, _, _) if x == 0 => HabitState::Ok,
+            (_, y, _) if y >  0 => HabitState::Ok,
+            (_, y, _) if y == 0 => HabitState::Sufficient,
+            (_, _, z) if z >  0 => HabitState::Sufficient,
+            (_, _, z) if z <= 0 => HabitState::Late,
+            _ => unreachable!()
         }
     }
 }
 
-fn today() -> NaiveDate {
-    let today = chrono::Local::today();
-    NaiveDate::from_num_days_from_ce(today.num_days_from_ce())
-}
-
 #[allow(dead_code)]
 fn tomorrow() -> NaiveDate {
-    let today = chrono::Local::today();
-    NaiveDate::from_num_days_from_ce(today.num_days_from_ce() + 1)
-}
-
-#[allow(dead_code)]
-fn days_ago(days: i32) -> NaiveDate {
-    let today = chrono::Local::today();
-    NaiveDate::from_num_days_from_ce(today.num_days_from_ce() - days)
+    today() + Duration::days(1)
 }
 
 #[derive(Debug)]
@@ -203,4 +201,44 @@ fn main() {
 fn print_elapsed(start_time: &SystemTime) {
     let elapsed = start_time.elapsed().unwrap();
     println!("{}s {:.*}ms", elapsed.as_secs(), 1, elapsed.subsec_nanos() as f64 / 1_000_000.0);
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_habit_state() {
+        let mut h = Habit::new("foo", Days::new(3, 5, 7));
+        h.done.push(today());
+        assert_eq!(h.state(&today()),                       HabitState::VeryGood);
+        assert_eq!(h.state(&(today() + Duration::days(1))), HabitState::VeryGood);
+        assert_eq!(h.state(&(today() + Duration::days(2))), HabitState::Good);
+        assert_eq!(h.state(&(today() + Duration::days(3))), HabitState::Ok);
+        assert_eq!(h.state(&(today() + Duration::days(4))), HabitState::Ok);
+        assert_eq!(h.state(&(today() + Duration::days(5))), HabitState::Sufficient);
+        assert_eq!(h.state(&(today() + Duration::days(6))), HabitState::Sufficient);
+        assert_eq!(h.state(&(today() + Duration::days(7))), HabitState::Late);
+        assert_eq!(h.state(&(today() + Duration::days(8))), HabitState::Late);
+
+        h.days = Days::new(2, 3, 4);
+        assert_eq!(h.state(&today()),                       HabitState::VeryGood);
+        assert_eq!(h.state(&(today() + Duration::days(1))), HabitState::Good);
+        assert_eq!(h.state(&(today() + Duration::days(2))), HabitState::Ok);
+        assert_eq!(h.state(&(today() + Duration::days(3))), HabitState::Sufficient);
+        assert_eq!(h.state(&(today() + Duration::days(4))), HabitState::Late);
+        assert_eq!(h.state(&(today() + Duration::days(5))), HabitState::Late);
+
+        h.days = Days::new(1, 2, 3);
+        assert_eq!(h.state(&today()),                       HabitState::Good);
+        assert_eq!(h.state(&(today() + Duration::days(1))), HabitState::Ok);
+        assert_eq!(h.state(&(today() + Duration::days(2))), HabitState::Sufficient);
+        assert_eq!(h.state(&(today() + Duration::days(3))), HabitState::Late);
+    }
+}
+
+fn today() -> NaiveDate {
+    let today = chrono::Local::today();
+    NaiveDate::from_num_days_from_ce(today.num_days_from_ce())
 }
