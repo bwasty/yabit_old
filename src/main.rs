@@ -23,10 +23,11 @@ macro_rules! p {
 enum HabitState {
     VeryGood = 1,
     Good = 2,
-    Ok = 3,
+    OK = 3,
     Sufficient = 4,
-    Late = 5
+    Late = 5,
 }
+use HabitState::*;
 
 // enum HabitStatus {
 //     Done,
@@ -38,7 +39,7 @@ enum HabitState {
 struct Days {
     good: i32,
     ok: i32,
-    sufficient: i32
+    sufficient: i32,
 }
 impl Days {
     fn new(good: i32, ok: i32, sufficient: i32) -> Days {
@@ -64,27 +65,50 @@ impl Habit {
             name: name.to_string(), 
             days: days, 
             done: vec![],
-            skipped: vec![]
+            skipped: vec![],
         }
     }
 
     #[allow(dead_code)]
     /// state when habit not done on date
     fn state(&self, date: &NaiveDate) -> HabitState {
-        assert!(date >= &today()); // TODO: support dates in the past
-        let diff = *date - *self.done.last().unwrap();
-        let diff = diff.num_days() as i32;
+        let diff = self.days_since_done(date);
         let days = &self.days;
         match (days.good - diff, days.ok - diff, days.sufficient - diff) {
-            (x, _, _) if x >  1 => HabitState::VeryGood,
-            (x, _, _) if x == 1 => HabitState::Good,
-            (x, _, _) if x == 0 => HabitState::Ok,
-            (_, y, _) if y >  0 => HabitState::Ok,
-            (_, y, _) if y == 0 => HabitState::Sufficient,
-            (_, _, z) if z >  0 => HabitState::Sufficient,
-            (_, _, z) if z <= 0 => HabitState::Late,
+            (x, _, _) if x >  1 => VeryGood,
+            (x, _, _) if x == 1 => Good,
+            (x, _, _) if x == 0 => OK,
+            (_, y, _) if y >  0 => OK,
+            (_, y, _) if y == 0 => Sufficient,
+            (_, _, z) if z >  0 => Sufficient,
+            (_, _, z) if z <= 0 => Late,
             _ => unreachable!()
         }
+    }
+
+    fn days_since_done(&self, date: &NaiveDate) -> i32 {
+        assert!(date >= &today()); // TODO: support dates in the past
+        let diff = *date - *self.done.last().unwrap(); // TODO: handle unwrap
+        diff.num_days() as i32
+    }
+
+    /// Days until the state 'decays'
+    #[allow(dead_code)]
+    fn days_left(&self) -> i32 {
+        let today = today();
+        let diff = self.days_since_done(&today);
+        match self.state(&(today - Duration::days(1))) {
+            VeryGood | Good     => self.days.good - diff,
+            OK                  => self.days.ok - diff,
+            Sufficient| Late    => self.days.sufficient - diff,
+        }
+    }
+
+    /// Average of the last 5 habit executions
+    #[allow(dead_code)]
+    fn avg_state(&self) -> HabitState {
+        p!(self.done.iter().rev().take(5).collect::<Vec<_>>());
+        OK
     }
 }
 
@@ -98,7 +122,7 @@ struct Habits {
     pub habits: Vec<Habit>
 }
 impl Habits {
-    fn new() -> Habits{
+    fn new() -> Habits {
         Habits { habits: vec![] }
     }
 
@@ -203,8 +227,13 @@ fn print_elapsed(start_time: &SystemTime) {
     println!("{}s {:.*}ms", elapsed.as_secs(), 1, elapsed.subsec_nanos() as f64 / 1_000_000.0);
 }
 
+fn today() -> NaiveDate {
+    let today = chrono::Local::today();
+    NaiveDate::from_num_days_from_ce(today.num_days_from_ce())
+}
 
-#[cfg(test)]
+
+// #[cfg(test)]
 mod tests {
     use super::*;
 
@@ -212,33 +241,60 @@ mod tests {
     fn test_habit_state() {
         let mut h = Habit::new("foo", Days::new(3, 5, 7));
         h.done.push(today());
-        assert_eq!(h.state(&today()),                       HabitState::VeryGood);
-        assert_eq!(h.state(&(today() + Duration::days(1))), HabitState::VeryGood);
-        assert_eq!(h.state(&(today() + Duration::days(2))), HabitState::Good);
-        assert_eq!(h.state(&(today() + Duration::days(3))), HabitState::Ok);
-        assert_eq!(h.state(&(today() + Duration::days(4))), HabitState::Ok);
-        assert_eq!(h.state(&(today() + Duration::days(5))), HabitState::Sufficient);
-        assert_eq!(h.state(&(today() + Duration::days(6))), HabitState::Sufficient);
-        assert_eq!(h.state(&(today() + Duration::days(7))), HabitState::Late);
-        assert_eq!(h.state(&(today() + Duration::days(8))), HabitState::Late);
+        assert_eq!(h.state(&today()),                       VeryGood);
+        assert_eq!(h.state(&(today() + Duration::days(1))), VeryGood);
+        assert_eq!(h.state(&(today() + Duration::days(2))), Good);
+        assert_eq!(h.state(&(today() + Duration::days(3))), OK);
+        assert_eq!(h.state(&(today() + Duration::days(4))), OK);
+        assert_eq!(h.state(&(today() + Duration::days(5))), Sufficient);
+        assert_eq!(h.state(&(today() + Duration::days(6))), Sufficient);
+        assert_eq!(h.state(&(today() + Duration::days(7))), Late);
+        assert_eq!(h.state(&(today() + Duration::days(8))), Late);
 
         h.days = Days::new(2, 3, 4);
-        assert_eq!(h.state(&today()),                       HabitState::VeryGood);
-        assert_eq!(h.state(&(today() + Duration::days(1))), HabitState::Good);
-        assert_eq!(h.state(&(today() + Duration::days(2))), HabitState::Ok);
-        assert_eq!(h.state(&(today() + Duration::days(3))), HabitState::Sufficient);
-        assert_eq!(h.state(&(today() + Duration::days(4))), HabitState::Late);
-        assert_eq!(h.state(&(today() + Duration::days(5))), HabitState::Late);
+        assert_eq!(h.state(&today()),                       VeryGood);
+        assert_eq!(h.state(&(today() + Duration::days(1))), Good);
+        assert_eq!(h.state(&(today() + Duration::days(2))), OK);
+        assert_eq!(h.state(&(today() + Duration::days(3))), Sufficient);
+        assert_eq!(h.state(&(today() + Duration::days(4))), Late);
+        assert_eq!(h.state(&(today() + Duration::days(5))), Late);
 
         h.days = Days::new(1, 2, 3);
-        assert_eq!(h.state(&today()),                       HabitState::Good);
-        assert_eq!(h.state(&(today() + Duration::days(1))), HabitState::Ok);
-        assert_eq!(h.state(&(today() + Duration::days(2))), HabitState::Sufficient);
-        assert_eq!(h.state(&(today() + Duration::days(3))), HabitState::Late);
+        assert_eq!(h.state(&today()),                       Good);
+        assert_eq!(h.state(&(today() + Duration::days(1))), OK);
+        assert_eq!(h.state(&(today() + Duration::days(2))), Sufficient);
+        assert_eq!(h.state(&(today() + Duration::days(3))), Late);
+    }
+
+    #[test]
+    #[allow(dead_code)]
+    fn test_habit_days_left() {
+        let mut h = Habit::new("foo", Days::new(2, 4, 5));
+        let t = today();
+        h.done.push(today());
+        assert_eq!(h.days_left(), 2);
+        h.done[0] = t - Duration::days(1);
+        assert_eq!(h.days_left(), 1);
+        h.done[0] = t - Duration::days(2);
+        assert_eq!(h.days_left(), 0);        
+        h.done[0] = t - Duration::days(3);
+        assert_eq!(h.days_left(), 1);
+        h.done[0] = t - Duration::days(4);
+        assert_eq!(h.days_left(), 0);
+        h.done[0] = t - Duration::days(5);
+        assert_eq!(h.days_left(), 0);
+        h.done[0] = t - Duration::days(6);
+        assert_eq!(h.days_left(), -1);
+    }
+
+    #[test]
+    #[allow(dead_code)]
+    fn test_habit_avg_state() {
+        let mut h = Habit::new("foo", Days::new(2, 3, 4));
+        let t = today();
+        h.done = vec![t - Duration::days(1)];
+        p!(h.avg_state());
+        assert!(false);
     }
 }
 
-fn today() -> NaiveDate {
-    let today = chrono::Local::today();
-    NaiveDate::from_num_days_from_ce(today.num_days_from_ce())
-}
