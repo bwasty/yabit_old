@@ -6,6 +6,10 @@ extern crate serde_json;
 extern crate chrono;
 extern crate clap; 
 
+#[macro_use] extern crate enum_primitive;
+extern crate num;
+use num::FromPrimitive;
+
 use std::fs::File;
 use std::error::Error;
 use std::time::SystemTime;
@@ -19,13 +23,15 @@ macro_rules! p {
     )
 }
 
+enum_from_primitive! {
 #[derive(Debug, PartialEq)]
-enum HabitState {
-    VeryGood = 1,
-    Good = 2,
-    OK = 3,
-    Sufficient = 4,
-    Late = 5,
+    enum HabitState {
+        VeryGood = 1,
+        Good = 2,
+        OK = 3,
+        Sufficient = 4,
+        Late = 5,
+    }
 }
 use HabitState::*;
 
@@ -111,14 +117,13 @@ impl Habit {
     #[allow(dead_code)]
     fn avg_state(&self) -> HabitState {
         let latest_dates: Vec<_> = self.done.iter().rev().take(6).collect(); 
-        let states: Vec<_> = latest_dates.windows(2).map(|window| {
+        let diffs: Vec<_> = latest_dates.windows(2).map(|window| {
             let day = *window[0];
             let day_before = *window[1];
             (day - day_before).num_days()
-        }).collect();
-        p!(states);
-        // p!(self.done.iter().rev().take(6).collect::<Vec<_>>());
-        OK
+        }).collect(); 
+        let avg = diffs.iter().sum::<i64>() as f32 / diffs.len() as f32;
+        HabitState::from_i32(avg.round() as i32).unwrap()
     }
 }
 
@@ -309,8 +314,8 @@ mod tests {
             t - Duration::days(3),
             t - Duration::days(1),
         ];
-        p!(h.avg_state());
-        assert!(false);
+        assert_eq!(h.avg_state(), Sufficient);
+        // TODO!: test for empty, 1,2, 5, 6 done
     }
 }
 
