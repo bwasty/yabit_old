@@ -8,7 +8,7 @@ extern crate clap;
 
 #[macro_use] extern crate enum_primitive;
 extern crate num;
-use num::FromPrimitive;
+// use num::FromPrimitive;
 
 use std::fs::File;
 use std::error::Error;
@@ -31,6 +31,7 @@ enum_from_primitive! {
         OK = 3,
         Sufficient = 4,
         Late = 5,
+        Unknown = 6,
     }
 }
 use HabitState::*;
@@ -109,14 +110,15 @@ impl Habit {
         match self.state(&(today - Duration::days(1))) {
             VeryGood | Good     => self.days.good - diff,
             OK                  => self.days.ok - diff,
-            Sufficient| Late    => self.days.sufficient - diff,
+            Sufficient | Late   => self.days.sufficient - diff,
+            Unknown             => 0 // TODO!: what makes sense here?
         }
     }
 
     /// Difference in days to HabitState
-    fn diff_to_state(diff: i32) {
-        // TODO: state() enough??
-    }
+    // fn diff_to_state(diff: i32) {
+    //     // TODO: state() enough??
+    // }
 
     /// Average of the last `averaging_limit` habit executions
     #[allow(dead_code)]
@@ -130,6 +132,9 @@ impl Habit {
             let done_before = *window[1];
             (done - done_before).num_days()
         }).collect(); 
+        if diffs.len() == 0 {
+            return Unknown
+        }
         let avg = diffs.iter().sum::<i64>() as f32 / diffs.len() as f32;
         match avg {
             _ if avg <= self.days.good as f32 => Good,
@@ -319,24 +324,23 @@ mod tests {
     #[test]
     #[allow(dead_code)]
     fn test_habit_avg_state() {
-        let default_averaging_limit = 5;
+        let limit = 5; // averaging limit
         let mut h = Habit::new("foo", Days::new(2, 3, 4));
         let t = today();
-        h.done = vec![
-            t - Duration::days(15),
-            t - Duration::days(10),
-            t - Duration::days(6),
-            t - Duration::days(3),
-            t - Duration::days(1),
-        ];
-        assert_eq!(h.avg_state(default_averaging_limit), Sufficient);
-        // TODO!: test for empty, 1,2, 5, 6 done
-
-        h.done = vec![];
-        assert_eq!(h.avg_state(default_averaging_limit), Late);
+        assert_eq!(h.avg_state(limit), Unknown);
         h.done.push(t - Duration::days(1));
-        p!(h.avg_state(default_averaging_limit));
-
+        assert_eq!(h.avg_state(limit), Unknown);
+        h.done.insert(0, t - Duration::days(3));
+        assert_eq!(h.avg_state(limit), Good);
+        h.done.insert(0, t - Duration::days(6));
+        assert_eq!(h.avg_state(limit), OK);
+        h.done.insert(0, t - Duration::days(10));
+        assert_eq!(h.avg_state(limit), OK);
+        h.done.insert(0, t - Duration::days(15));
+        assert_eq!(h.avg_state(limit), Sufficient);
+        h.done.insert(0, t - Duration::days(30));
+        assert_eq!(h.avg_state(limit), Late);
+        assert_eq!(h.avg_state(3), OK);
     }
 }
 
