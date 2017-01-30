@@ -113,17 +113,30 @@ impl Habit {
         }
     }
 
-    /// Average of the last 5 habit executions
+    /// Difference in days to HabitState
+    fn diff_to_state(diff: i32) {
+        // TODO: state() enough??
+    }
+
+    /// Average of the last `averaging_limit` habit executions
     #[allow(dead_code)]
-    fn avg_state(&self) -> HabitState {
-        let latest_dates: Vec<_> = self.done.iter().rev().take(6).collect(); 
+    fn avg_state(&self, averaging_limit: usize) -> HabitState {
+        let latest_dates: Vec<_> = self.done.iter()
+            .rev() // latest executions
+            .take(averaging_limit + 1) // add one for comparing against the last execution before
+            .collect(); 
         let diffs: Vec<_> = latest_dates.windows(2).map(|window| {
-            let day = *window[0];
-            let day_before = *window[1];
-            (day - day_before).num_days()
+            let done = *window[0];
+            let done_before = *window[1];
+            (done - done_before).num_days()
         }).collect(); 
         let avg = diffs.iter().sum::<i64>() as f32 / diffs.len() as f32;
-        HabitState::from_i32(avg.round() as i32).unwrap()
+        match avg {
+            _ if avg <= self.days.good as f32 => Good,
+            _ if avg <= self.days.ok as f32 => OK,
+            _ if avg <= self.days.sufficient as f32 => Sufficient,
+            _ => Late
+        }
     }
 }
 
@@ -134,11 +147,12 @@ fn tomorrow() -> NaiveDate {
 
 #[derive(Debug)]
 struct Habits {
-    pub habits: Vec<Habit>
+    pub habits: Vec<Habit>,
+    pub averaging_window: i32
 }
 impl Habits {
     fn new() -> Habits {
-        Habits { habits: vec![] }
+        Habits { habits: vec![], averaging_window: 5 }
     }
 
     fn load(&mut self) {
@@ -305,6 +319,7 @@ mod tests {
     #[test]
     #[allow(dead_code)]
     fn test_habit_avg_state() {
+        let default_averaging_limit = 5;
         let mut h = Habit::new("foo", Days::new(2, 3, 4));
         let t = today();
         h.done = vec![
@@ -314,8 +329,14 @@ mod tests {
             t - Duration::days(3),
             t - Duration::days(1),
         ];
-        assert_eq!(h.avg_state(), Sufficient);
+        assert_eq!(h.avg_state(default_averaging_limit), Sufficient);
         // TODO!: test for empty, 1,2, 5, 6 done
+
+        h.done = vec![];
+        assert_eq!(h.avg_state(default_averaging_limit), Late);
+        h.done.push(t - Duration::days(1));
+        p!(h.avg_state(default_averaging_limit));
+
     }
 }
 
